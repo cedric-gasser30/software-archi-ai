@@ -1,74 +1,71 @@
 import streamlit as st
 from openai import OpenAI
 import streamlit.components.v1 as components
+import re
 
-# --- 1. SETUP ---
-st.set_page_config(page_title="Secure AI Architect", page_icon="🔒", layout="wide")
+# --- SETUP ---
+st.set_page_config(page_title="AI Architecture Designer", page_icon="🏗️", layout="wide")
 
-# --- 2. LOGIN LOGIK ---
+# Login Logik (Passwort aus Secrets)
 def check_password():
-    """Gibt True zurück, wenn das Passwort korrekt ist."""
-    def password_entered():
-        if st.session_state["password"] == st.secrets.get("APP_PASSWORD", "admin"):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Passwort nicht im State lassen
-        else:
-            st.session_state["password_correct"] = False
-
     if "password_correct" not in st.session_state:
-        # Erstes Mal: Passwort abfragen
-        st.text_input("Bitte gib das Passwort ein, um die Architektur-KI zu nutzen:", 
-                     type="password", on_change=password_entered, key="password")
+        st.text_input("Passwort:", type="password", key="password", 
+                     on_change=lambda: st.session_state.update({"password_correct": st.session_state.password == st.secrets.get("APP_PASSWORD", "admin")}))
         return False
-    elif not st.session_state["password_correct"]:
-        # Falsches Passwort
-        st.text_input("Passwort falsch. Bitte erneut versuchen:", 
-                     type="password", on_change=password_entered, key="password")
-        st.error("😕 Zugriff verweigert.")
-        return False
-    else:
-        # Passwort korrekt
-        return True
+    return st.session_state["password_correct"]
 
-# Nur fortfahren, wenn der Login erfolgreich war
 if check_password():
-    
-    # --- 3. DIE EIGENTLICHE APP ---
     api_key = st.secrets.get("OPENAI_API_KEY")
-    
-    st.title("🏗️ AI Software Architecture Designer")
-    st.sidebar.success("🔒 Du bist eingeloggt")
-    
-    if st.sidebar.button("Logout"):
-        st.session_state["password_correct"] = False
-        st.rerun()
+    client = OpenAI(api_key=api_key) if api_key else None
 
-    if not api_key:
-        st.error("❌ API-Key fehlt in den Secrets!")
-    else:
-        client = OpenAI(api_key=api_key)
-        
-        user_input = st.text_area("Systembeschreibung:", placeholder="z.B. Webshop Architektur...")
-        
-        if st.button("🚀 Architektur generieren"):
+    st.title("🏗️ AI Software Architecture Designer")
+
+    user_input = st.text_area("Systembeschreibung:", height=200, placeholder="Trikot-Shop...")
+
+    if st.button("🚀 Architektur generieren"):
+        if not client:
+            st.error("API Key fehlt!")
+        else:
             with st.spinner("KI generiert Architektur..."):
                 try:
                     response = client.chat.completions.create(
                         model="gpt-4o",
                         messages=[
-                            {"role": "system", "content": "Erstelle NUR Mermaid.js Code (graph TD...). Kein Text drumherum."},
+                            {"role": "system", "content": "Du bist ein Software-Architekt. Erstelle NUR Mermaid.js Code (graph TD). Benutze KEINE Sonderzeichen wie ' oder - in den IDs. Nutze einfache Namen wie OrderService statt Order-Service. Antworte NUR mit dem Code."},
                             {"role": "user", "content": user_input}
                         ]
                     )
-                    mermaid_code = response.choices[0].message.content.strip().replace("```mermaid", "").replace("```", "")
                     
+                    # 1. Rohcode holen
+                    code = response.choices[0].message.content.strip()
+                    
+                    # 2. Markdown-Boxen entfernen
+                    code = code.replace("```mermaid", "").replace("```", "").strip()
+                    
+                    # 3. Aggressive Reinigung für Mermaid-Syntax (Verhindert den Syntax Error)
+                    # Wir entfernen Bindestriche in den IDs, da Mermaid diese oft nicht mag
+                    code = re.sub(r'([a-zA-Z0-9]+)-([a-zA-Z0-9]+)', r'\1\2', code)
+
+                    # HTML Template mit Fehler-Fallback
                     html_code = f"""
-                    <div class="mermaid" style="display: flex; justify-content: center;">{mermaid_code}</div>
+                    <div class="mermaid">
+                    {code}
+                    </div>
                     <script type="module">
                         import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-                        mermaid.initialize({{ startOnLoad: true, theme: 'neutral' }});
+                        try {{
+                            mermaid.initialize({{ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' }});
+                        }} catch (e) {{
+                            document.write("Fehler beim Zeichnen: " + e.message);
+                        }}
                     </script>
                     """
-                    components.html(html_code, height=600, scrolling=True)
+                    
+                    st.subheader("Visualisierung")
+                    components.html(html_code, height=800, scrolling=True)
+                    
+                    with st.expander("Mermaid Code kopieren"):
+                        st.code(code)
+
                 except Exception as e:
-                    st.error(f"Fehler: {e}")
+                    st.error(f"Technischer Fehler: {e}")
