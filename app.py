@@ -2,71 +2,73 @@ import streamlit as st
 from openai import OpenAI
 import streamlit.components.v1 as components
 
-# 1. Konfiguration
-st.set_page_config(page_title="AI Software Architect", page_icon="🏗️", layout="wide")
+# --- 1. SETUP ---
+st.set_page_config(page_title="Secure AI Architect", page_icon="🔒", layout="wide")
 
-# 2. Key aus den Streamlit Secrets laden
-api_key = st.secrets.get("OPENAI_API_KEY")
-
-st.title("🏗️ AI Software Architecture Designer")
-st.write("Generiere saubere Mermaid.js Diagramme aus deiner Beschreibung.")
-
-if not api_key:
-    st.error("❌ Fehler: Kein API-Key gefunden. Bitte füge 'OPENAI_API_KEY' in den Streamlit Secrets hinzu.")
-else:
-    client = OpenAI(api_key=api_key)
-    
-    # Eingabebereich
-    user_input = st.text_area(
-        "Systembeschreibung (z.B. Trikot-Webshop):", 
-        height=200,
-        placeholder="Beschreibe Services, Datenbanken und Verbindungen..."
-    )
-    
-    if st.button("🚀 Architektur generieren"):
-        if not user_input:
-            st.warning("Bitte gib zuerst eine Beschreibung ein.")
+# --- 2. LOGIN LOGIK ---
+def check_password():
+    """Gibt True zurück, wenn das Passwort korrekt ist."""
+    def password_entered():
+        if st.session_state["password"] == st.secrets.get("APP_PASSWORD", "admin"):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Passwort nicht im State lassen
         else:
-            with st.spinner("KI generiert das Diagramm..."):
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # Erstes Mal: Passwort abfragen
+        st.text_input("Bitte gib das Passwort ein, um die Architektur-KI zu nutzen:", 
+                     type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Falsches Passwort
+        st.text_input("Passwort falsch. Bitte erneut versuchen:", 
+                     type="password", on_change=password_entered, key="password")
+        st.error("😕 Zugriff verweigert.")
+        return False
+    else:
+        # Passwort korrekt
+        return True
+
+# Nur fortfahren, wenn der Login erfolgreich war
+if check_password():
+    
+    # --- 3. DIE EIGENTLICHE APP ---
+    api_key = st.secrets.get("OPENAI_API_KEY")
+    
+    st.title("🏗️ AI Software Architecture Designer")
+    st.sidebar.success("🔒 Du bist eingeloggt")
+    
+    if st.sidebar.button("Logout"):
+        st.session_state["password_correct"] = False
+        st.rerun()
+
+    if not api_key:
+        st.error("❌ API-Key fehlt in den Secrets!")
+    else:
+        client = OpenAI(api_key=api_key)
+        
+        user_input = st.text_area("Systembeschreibung:", placeholder="z.B. Webshop Architektur...")
+        
+        if st.button("🚀 Architektur generieren"):
+            with st.spinner("KI generiert Architektur..."):
                 try:
-                    # Der Prompt zwingt die KI zur Reinheit des Codes
                     response = client.chat.completions.create(
                         model="gpt-4o",
                         messages=[
-                            {"role": "system", "content": "Du bist ein Senior Software Architekt. Erstelle NUR Mermaid.js Code (startend mit graph TD). Gib KEINEN Text davor oder danach aus. Benutze keine Markdown-Code-Blocks (```)."},
+                            {"role": "system", "content": "Erstelle NUR Mermaid.js Code (graph TD...). Kein Text drumherum."},
                             {"role": "user", "content": user_input}
-                        ],
-                        temperature=0.1
+                        ]
                     )
+                    mermaid_code = response.choices[0].message.content.strip().replace("```mermaid", "").replace("```", "")
                     
-                    # Code säubern: Falls die KI doch Backticks liefert, werden sie hier entfernt
-                    mermaid_code = response.choices[0].message.content.strip()
-                    mermaid_code = mermaid_code.replace("```mermaid", "").replace("```", "").strip()
-
-                    # Validierung
-                    if not mermaid_code.startswith(("graph", "sequenceDiagram", "classDiagram", "erDiagram")):
-                        st.error("Die KI hat keinen gültigen Diagramm-Code geliefert. Versuche es mit einer genaueren Beschreibung.")
-                    else:
-                        st.subheader("Visualisierung:")
-                        
-                        # Das HTML-Template für das Rendering
-                        html_code = f"""
-                        <div class="mermaid" style="display: flex; justify-content: center;">
-                        {mermaid_code}
-                        </div>
-                        <script type="module">
-                            import mermaid from '[https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs](https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs)';
-                            mermaid.initialize({{ 
-                                startOnLoad: true, 
-                                theme: 'neutral',
-                                securityLevel: 'loose'
-                            }});
-                        </script>
-                        """
-                        components.html(html_code, height=600, scrolling=True)
-                        
-                        with st.expander("Mermaid Quellcode anzeigen (für Notion/GitHub)"):
-                            st.code(mermaid_code, language="mermaid")
-
+                    html_code = f"""
+                    <div class="mermaid" style="display: flex; justify-content: center;">{mermaid_code}</div>
+                    <script type="module">
+                        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                        mermaid.initialize({{ startOnLoad: true, theme: 'neutral' }});
+                    </script>
+                    """
+                    components.html(html_code, height=600, scrolling=True)
                 except Exception as e:
-                    st.error(f"Ein technischer Fehler ist aufgetreten: {e}")
+                    st.error(f"Fehler: {e}")
