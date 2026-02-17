@@ -5,12 +5,12 @@ import streamlit.components.v1 as components
 # --- 1. SETUP ---
 st.set_page_config(page_title="Professional AI Architect", layout="wide")
 
-# Styling für die App (Heller Hintergrund, sauberer Look)
+# Styling für den "Conceptual Architecture" Look (Weißer Hintergrund, klare Linien)
 st.markdown("""
     <style>
-    .main { background-color: #ffffff; }
-    .stTextArea textarea { border: 2px solid #3C8CE7; border-radius: 10px; }
-    .stButton>button { background-color: #3C8CE7; color: white; font-weight: bold; border-radius: 10px; }
+    .main { background-color: #f9f9f9; }
+    .stTextArea textarea { border: 1px solid #3C8CE7; }
+    .stButton>button { background-color: #3C8CE7; color: white; border-radius: 5px; width: 100%; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -22,7 +22,8 @@ if "auth" not in st.session_state:
     st.session_state.auth = False
 
 if not st.session_state.auth:
-    pw_input = st.text_input("Passwort eingeben:", type="password")
+    st.title("🔒 Login")
+    pw_input = st.text_input("Passwort:", type="password")
     if pw_input == password:
         st.session_state.auth = True
         st.rerun()
@@ -35,21 +36,24 @@ st.title("🏗️ Professional Architecture Designer")
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    prompt = st.text_area("System beschreiben:", height=200, placeholder="Trikot-Shop mit Frontend, Backend und Datenbanken...")
+    prompt = st.text_area("System beschreiben:", height=300, 
+                         placeholder="Z.B. Webshop für Trikots. Nutze Schichten für Frontend, Backend und Datenbanken.")
     generate = st.button("Architektur generieren")
 
 if generate and prompt:
-    with st.spinner("Visualisiere..."):
+    with st.spinner("Visualisiere Architektur..."):
         try:
-            # Der Prompt zwingt die KI, Subgraphs (Boxen) zu bauen
+            # Der Prompt ist jetzt extrem spezifisch für den Layer-Look (Bild 14)
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{
                     "role": "system", 
-                    "content": "Du bist ein Top-Architekt. Erstelle NUR Mermaid.js Code (graph LR). "
-                               "Nutze 'subgraph' um Komponenten in Boxen wie 'Frontend', 'Backend' und 'Daten' zu gruppieren. "
-                               "Nutze Farben für Pfeile: linkStyle default stroke:#3C8CE7,stroke-width:2px; "
-                               "Gib NUR den Code ohne Backticks aus."
+                    "content": """Du bist ein Senior Architekt. Erstelle NUR Mermaid.js Code (graph LR).
+                    WICHTIG: 
+                    1. Gruppiere ALLES in subgraphs: 'subgraph "Specification and Execution Layer"', 'subgraph "Data Layer"', etc.
+                    2. Nutze Icons: 'User[fa:fa-user User]' oder 'DB[(fa:fa-database Database)]'.
+                    3. Farbe: Nutze 'linkStyle default stroke:#00a896,stroke-width:3px;' für die Linien.
+                    4. Antworte NUR mit dem Code, ohne Backticks oder Text."""
                 }, {"role": "user", "content": prompt}]
             )
             
@@ -58,9 +62,9 @@ if generate and prompt:
             with col2:
                 st.subheader("Ihre Architektur-Visualisierung:")
                 
-                # DER FIX: Dieses HTML-Snippet sorgt für das richtige Zeichnen
+                # DER FIX FÜR DEN FEHLER (html_code entfernt):
                 html_template = f"""
-                <div class="mermaid">
+                <div class="mermaid" style="background-color: white; border: 1px solid #ddd; padding: 20px;">
                 {clean_code}
                 </div>
                 <script type="module">
@@ -70,16 +74,18 @@ if generate and prompt:
                         theme: 'base',
                         themeVariables: {{
                             'primaryColor': '#ffffff',
-                            'edgeColor': '#3C8CE7',
-                            'fontFamily': 'arial'
+                            'primaryTextColor': '#333',
+                            'primaryBorderColor': '#333',
+                            'lineColor': '#00a896',
+                            'secondaryColor': '#f4f4f4',
+                            'tertiaryColor': '#fff'
                         }},
                         flowchart: {{ htmlLabels: true, curve: 'basis' }}
                     }});
-                    // Erzwinge das Rendern
-                    mermaid.contentLoaded();
                 </script>
                 """
-                components.html(html_code=html_template, height=800, scrolling=True)
+                # Hier lag der Fehler: Das Argument heißt 'html', nicht 'html_code'
+                components.html(html_template, height=800, scrolling=True)
                 
         except Exception as e:
             st.error(f"Fehler: {e}")
